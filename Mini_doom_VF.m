@@ -1,7 +1,7 @@
 1;  % marks this file as a script (functions below are defined before use)
 % =========================================================================
 % PROGRAM   : DOOM FPS MINI - Hellish Dimension Campaign
-% FILE      : doom_fps_campaign_v3.m
+% FILE      : doom_fps_campaign_VF.m
 % =========================================================================
 %
 % -------------------------------------------------------------------------
