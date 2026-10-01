@@ -1,0 +1,438 @@
+1;  % marks this file as a script (functions below are defined before use)
+% =========================================================================
+% PROGRAM   : DOOM FPS MINI - first-person maze explorer  (doom_fps_VF.m)
+% =========================================================================
+% GOAL
+%   Explore the dark maze in first person, find the GREEN exit wall and
+%   reach it alive. Sleeping demons wake up when you get close.
+%
+% GAME COMPONENTS
+%   - 3D view     : pseudo-3D "raycasting" (walls get darker with distance)
+%   - Maze        : grid map (1 = wall, 0 = free, 2 = green exit)
+%   - Demons      : red creatures with yellow eyes (billboard sprites)
+%   - Minimap     : top-left corner (white = you, red = demons, green = exit)
+%   - Crosshair   : '+' in the middle of the screen
+%   - HUD         : health, ammo, kills in the figure title
+%
+% VARIABLES
+%   map                     : maze matrix
+%   player_x, player_y      : position of the player in the maze
+%   player_angle            : direction the player is looking at (radians)
+%   demon_x, demon_y        : positions of the demons
+%   health, ammo, kills     : player state
+%   flash_timer             : frames during which the muzzle flash is shown
+%
+% MAIN LOOP (DURING a trial, one pass = one frame)
+%   1) read key (move / strafe / turn / shoot / stop)
+%   2) demons within 6 units chase the player (they slide along walls)
+%   3) bites: a demon touching the player explodes and costs 10 health
+%   4) render the 3D view with raycasting, sprites and minimap
+%   5) check win (exit reached) / lose (health <= 0) / stop
+%
+% ACROSS TRIALS (replay)
+%   health, ammo and kills are reset and demons are placed on NEW random
+%   cells, so each game is different. Results are appended to
+%   'doom_fps_results.txt' (outcome, kills, duration).
+%
+% RULES
+%   Start with 100 health and 12 ammo. A shot costs 1 ammo, a kill gives
+%   +2 ammo. WIN : reach the green exit.  LOSE : health <= 0.
+%
+% WAYS TO MOVE (keys can be held and combined)
+%   W / S : forward / backward      A / D : strafe left / right
+%   Left / Right arrows : turn the camera
+%   Space : shoot                   q : stop        r : replay (end screen)
+%
+% CONTEXT
+%   Minimalist tribute to classic first-person shooters (Doom series), made
+%   for the TechnEx coding session (Master of Neurosciences, Lyon 1).
+%   Original code and shapes only: no assets from the real games are used.
+%
+% SOURCES (AI / sound / image / word list)
+%   No external image, sound or word list. First draft of the code
+%   generated with AI (Claude, Anthropic), then adapted by the authors.
+%
+% VERSIONS
+%   Octave version : 9.x (check yours with: version)     Code version : v1
+%
+% AUTHORS + CONTRIBUTION
+%   Name Surname 1 : game idea, main loop
+%   Name Surname 2 : maze design, rules screen
+%
+% DATE
+%   2026-10-01   (format: yyyy-mm-dd)
+% =========================================================================
+
+% ------------------------- FUNCTIONS -------------------------------------
+
+function key_press(src, evt)
+  % Remember the key as 'last_key' (one-shot) and add it to the held keys
+  held = getappdata(src, 'held');
+  if isempty(held), held = {}; endif
+  if ~any(strcmp(held, evt.Key))
+    held{end+1} = evt.Key;
+  endif
+  setappdata(src, 'held', held);
+  setappdata(src, 'last_key', evt.Key);
+endfunction
+
+function key_release(src, evt)
+  % Remove the released key from the held keys
+  held = getappdata(src, 'held');
+  if isempty(held), held = {}; endif
+  held(strcmp(held, evt.Key)) = [];
+  setappdata(src, 'held', held);
+endfunction
+
+function key = wait_for_key(fig, valid_keys)
+  % Wait until one of the valid keys is pressed (returns '' if figure closed)
+  key = '';
+  setappdata(fig, 'last_key', '');
+  while ishandle(fig)
+    pause(0.05);
+    k = getappdata(fig, 'last_key');
+    if any(strcmp(k, valid_keys))
+      key = k;
+      return;
+    endif
+  endwhile
+endfunction
+
+function map = build_map()
+  % Maze: '#' = wall, '.' = free cell, 'E' = exit (green wall)
+  rows = {'###############', ...
+          '#...#.......#.#', ...
+          '###.#.#.###.#.#', ...
+          '#...#.#.#.#.#.#', ...
+          '#.###.#.#.#.#.#', ...
+          '#.#.......#.#.#', ...
+          '#.#.###.#.#.#.#', ...
+          '#.......#...#.#', ...
+          '#.#.#.###.#.#.#', ...
+          '#.#.......#...#', ...
+          '#.###.#.###.#.#', ...
+          '#...#.#.....#.#', ...
+          '###.#.###.###.#', ...
+          '#.....#.......E', ...
+          '###############'};
+  map = zeros(numel(rows), numel(rows{1}));
+  for r = 1:numel(rows)
+    map(r, :) = (rows{r} == '#') * 1 + (rows{r} == 'E') * 2;
+  endfor
+endfunction
+
+function ok = can_walk(map, x, y, margin)
+  % True if a body of half-size 'margin' centred on (x,y) touches no wall
+  [nr, nc] = size(map);
+  xs = [x - margin, x + margin, x - margin, x + margin];
+  ys = [y - margin, y - margin, y + margin, y + margin];
+  ci = floor(xs) + 1;
+  ri = floor(ys) + 1;
+  if any(ci < 1 | ci > nc | ri < 1 | ri > nr)
+    ok = false;
+    return;
+  endif
+  ok = all(map(sub2ind([nr nc], ri, ci)) == 0);
+endfunction
+
+function d = wall_distance(map, px, py, angle)
+  % Distance from (px,py) to the first wall in a given direction
+  [nr, nc] = size(map);
+  d = 14;
+  for t = 0.04:0.04:14
+    ci = floor(px + t * cos(angle)) + 1;
+    ri = floor(py + t * sin(angle)) + 1;
+    if ci < 1 || ci > nc || ri < 1 || ri > nr || map(ri, ci) > 0
+      d = t;
+      return;
+    endif
+  endfor
+endfunction
+
+function img = render_frame(map, px, py, angle, ex, ey, img_w, img_h, fov)
+  % Raycasting: one ray per image column, then sprites, then minimap
+  [nr, nc] = size(map);
+  step    = 0.04;
+  max_d   = 14;
+  offsets = linspace(-fov/2, fov/2, img_w);          % angle of each column
+  rays    = angle + offsets;
+  D = (step:step:max_d)';                            % distances tested
+  X = px + D * cos(rays);                            % points along rays
+  Y = py + D * sin(rays);
+  ci = min(max(floor(X) + 1, 1), nc);
+  ri = min(max(floor(Y) + 1, 1), nr);
+  cells = map(sub2ind([nr nc], ri, ci));             % map value at each point
+  [anyhit, idx] = max(cells > 0, [], 1);             % first wall on each ray
+  idx(~anyhit) = numel(D);
+  lin = idx + (0:img_w-1) * numel(D);
+  wall_dist = D(idx)';                               % 1 x img_w
+  wall_type = cells(lin);
+  wall_type(~anyhit) = 1;
+  xh = X(lin);
+  yh = Y(lin);
+
+  % Wall appearance: darker with distance, darker on one orientation,
+  % thin vertical lines to look like bricks
+  fx = min(mod(xh, 1), 1 - mod(xh, 1));
+  fy = min(mod(yh, 1), 1 - mod(yh, 1));
+  face_x = fx < fy;
+  u = mod(face_x .* yh + (~face_x) .* xh, 1);
+  stripe = u < 0.06;
+  shade = (1 ./ (1 + 0.15 * wall_dist)) .* (0.75 + 0.25 * face_x) .* (1 - 0.4 * stripe);
+  base_wall = [0.55 0.18 0.12];                      % red-brown wall
+  base_exit = [0.10 0.90 0.25];                      % green exit
+  wall_h = img_h ./ max(wall_dist .* cos(offsets), 0.1);
+  R = (1:img_h)';
+  mask = abs(R - (img_h + 1)/2) <= wall_h / 2;       % img_h x img_w
+
+  img = zeros(img_h, img_w, 3);
+  ceil_c  = [0.06 0.04 0.05];
+  floor_c = [0.22 0.18 0.15];
+  for ch = 1:3
+    bg = (R <= img_h/2) * ceil_c(ch) + (R > img_h/2) .* floor_c(ch) .* (0.3 + 0.7 * (R - img_h/2) / (img_h/2));
+    wall_col = ((wall_type == 1) * base_wall(ch) + (wall_type == 2) * base_exit(ch)) .* shade;
+    img(:, :, ch) = bg .* (~mask) + mask .* wall_col;
+  endfor
+
+  % Sprites (demons), drawn from far to near, hidden behind walls
+  if ~isempty(ex)
+    dx = ex - px;
+    dy = ey - py;
+    dist = hypot(dx, dy);
+    rel = mod(atan2(dy, dx) - angle + pi, 2*pi) - pi;
+    [~, order] = sort(dist, 'descend');
+    for k = order(:)'
+      if abs(rel(k)) > fov/2 + 0.4 || dist(k) < 0.2
+        continue;
+      endif
+      sprite_h = img_h * 0.7 / max(dist(k) * cos(rel(k)), 0.1);
+      sprite_w = sprite_h * 0.5;
+      center_col = (rel(k) / (fov/2)) * (img_w/2) + (img_w + 1)/2;
+      top_row = (img_h + 1)/2 - sprite_h/2;
+      cols = max(1, round(center_col - sprite_w/2)):min(img_w, round(center_col + sprite_w/2));
+      rows = max(1, round(top_row)):min(img_h, round(top_row + sprite_h));
+      eye_rows = max(1, round(top_row + 0.25 * sprite_h)):min(img_h, round(top_row + 0.25 * sprite_h) + 1);
+      s = 1 / (1 + 0.15 * dist(k));
+      for c = cols
+        if dist(k) < wall_dist(c) && ~isempty(rows)
+          img(rows, c, 1) = 0.9 * s;
+          img(rows, c, 2) = 0.1 * s;
+          img(rows, c, 3) = 0.1 * s;
+          if abs(abs(c - center_col) - 0.2 * sprite_w) < max(0.8, 0.07 * sprite_w)
+            img(eye_rows, c, 1) = 1;
+            img(eye_rows, c, 2) = 0.9;
+            img(eye_rows, c, 3) = 0.1;
+          endif
+        endif
+      endfor
+    endfor
+  endif
+
+  % Minimap in the top-left corner (scale 2 pixels per cell)
+  sc = 2;
+  wallm = kron(double(map == 1), ones(sc));
+  exitm = kron(double(map == 2), ones(sc));
+  mm = zeros(nr * sc, nc * sc, 3);
+  mm(:, :, 1) = 0.5 * wallm;
+  mm(:, :, 2) = 0.5 * wallm + 0.9 * exitm;
+  mm(:, :, 3) = 0.5 * wallm;
+  for k = 1:numel(ex)
+    r = min(max(floor(ey(k) * sc) + 1, 1), nr * sc);
+    c = min(max(floor(ex(k) * sc) + 1, 1), nc * sc);
+    mm(r, c, :) = reshape([1 0 0], 1, 1, 3);
+  endfor
+  r = min(max(floor(py * sc) + 1, 1), nr * sc);
+  c = min(max(floor(px * sc) + 1, 1), nc * sc);
+  mm(r, c, :) = reshape([1 1 1], 1, 1, 3);
+  img(1:nr*sc, 1:nc*sc, :) = mm;
+endfunction
+
+function save_result(filename, kills, outcome, seconds)
+  % Append the result of one game to a text file
+  fid = fopen(filename, 'a');
+  fprintf(fid, '%s | kills = %d | %s | %.1f s\n', datestr(now, 'yyyy-mm-dd HH:MM:SS'), kills, outcome, seconds);
+  fclose(fid);
+endfunction
+
+% ------------------------- SETUP -----------------------------------------
+clear; clc; close all;
+
+map            = build_map();
+img_w          = 120;      % horizontal resolution of the 3D view (pixels)
+img_h          = 72;       % vertical resolution of the 3D view (pixels)
+fov            = 1.05;     % field of view (radians, about 60 degrees)
+move_step      = 0.12;     % distance moved per frame
+turn_step      = 0.10;     % rotation per frame (radians)
+n_demons       = 6;        % number of demons at the start of each game
+demon_speed    = 0.04;     % demon speed per frame
+demon_wake     = 6;        % distance at which a demon wakes up
+start_health   = 100;      % health at the beginning of each game
+start_ammo     = 12;       % ammo at the beginning of each game
+results_file   = 'doom_fps_results.txt';
+[exit_row, exit_col] = find(map == 2);
+exit_x = exit_col - 0.5;   % centre of the exit cell
+exit_y = exit_row - 0.5;
+
+% Figure and axes (normalized units: the figure can be resized freely)
+fig = figure('Name', 'DOOM FPS MINI', 'NumberTitle', 'off', ...
+             'Color', [0.10 0.02 0.02], 'KeyPressFcn', @key_press, 'KeyReleaseFcn', @key_release);
+ax = axes('Parent', fig, 'Position', [0.05 0.05 0.90 0.82], ...
+          'XTick', [], 'YTick', [], 'Box', 'on');
+h_img = image(ax, zeros(img_h, img_w, 3));
+axis(ax, 'image');
+hold(ax, 'on');
+plot(ax, (img_w + 1)/2, (img_h + 1)/2, '+', 'MarkerSize', 14, 'Color', 'w');  % crosshair
+
+% ------------------------- ACROSS TRIALS LOOP ----------------------------
+play_again = true;
+while play_again && ishandle(fig)
+
+  % ---- Reset everything at the beginning of each game ----
+  health       = start_health;
+  ammo         = start_ammo;
+  kills        = 0;
+  player_x     = 1.5;
+  player_y     = 1.5;
+  player_angle = 0;
+  flash_timer  = 0;
+  outcome      = 'stopped';
+
+  % Demons on random free cells, not too close to the start
+  [free_r, free_c] = find(map == 0);
+  far_enough = hypot(free_c - 0.5 - player_x, free_r - 0.5 - player_y) > 6;
+  free_r = free_r(far_enough);
+  free_c = free_c(far_enough);
+  pick = randperm(numel(free_r), min(n_demons, numel(free_r)));
+  demon_x = free_c(pick)' - 0.5;
+  demon_y = free_r(pick)' - 0.5;
+
+  % ---- Start screen: rules and moves ----
+  set(h_img, 'CData', render_frame(map, player_x, player_y, player_angle, demon_x, demon_y, img_w, img_h, fov));
+  title(ax, 'DOOM FPS MINI', 'Color', 'r');
+  rules = text(ax, (img_w + 1)/2, (img_h + 1)/2, {'RULES', ...
+                'Find the GREEN exit wall. Demons wake up when close.', ...
+                'Shot = -1 ammo, kill = +2 ammo. Bite = -10 health.', ...
+                '', 'MOVE (hold the keys)', ...
+                'W/S: forward / back     A/D: strafe', ...
+                'Left/Right arrows: turn camera', ...
+                'Space: shoot     q: stop', '', ...
+                'Press SPACE to start'}, ...
+               'HorizontalAlignment', 'center', 'Color', 'w', 'FontSize', 11, ...
+               'BackgroundColor', 'k');
+  key = wait_for_key(fig, {'space', 'q'});
+  if ishandle(rules), delete(rules); endif
+  if isempty(key) || strcmp(key, 'q')
+    break;
+  endif
+  setappdata(fig, 'last_key', '');
+  setappdata(fig, 'held', {});
+  game_timer = tic;
+
+  % ---- Main loop (DURING the trial) ----
+  game_running = true;
+  while game_running && ishandle(fig)
+
+    % 1) Read the keys: WASD moves, arrows turn, space shoots, q stops
+    held = getappdata(fig, 'held');
+    key  = getappdata(fig, 'last_key');          % one-shot key (shoot / stop)
+    setappdata(fig, 'last_key', '');
+    move_fwd  = move_step * (any(strcmp(held, 'w')) - any(strcmp(held, 's')));
+    move_side = move_step * (any(strcmp(held, 'd')) - any(strcmp(held, 'a')));
+    player_angle = player_angle + turn_step * (any(strcmp(held, 'rightarrow')) - any(strcmp(held, 'leftarrow')));
+    if strcmp(key, 'space') && ammo > 0
+      ammo = ammo - 1;
+      flash_timer = 2;
+      % Hitscan: nearest visible demon close to the aiming line is killed
+      dx = demon_x - player_x;
+      dy = demon_y - player_y;
+      dist = hypot(dx, dy);
+      rel = mod(atan2(dy, dx) - player_angle + pi, 2*pi) - pi;
+      visible = dist < wall_distance(map, player_x, player_y, player_angle);
+      candidates = find(abs(rel) < pi/2 & abs(sin(rel)) .* dist < 0.45 & visible);
+      if ~isempty(candidates)
+        [~, nearest] = min(dist(candidates));
+        victim = candidates(nearest);
+        demon_x(victim) = [];
+        demon_y(victim) = [];
+        kills = kills + 1;
+        ammo  = ammo + 2;
+      endif
+    elseif strcmp(key, 'q')
+      outcome = 'stopped';
+      game_running = false;
+    endif
+
+    % Move the player, axis by axis so that he slides along walls
+    new_x = player_x + move_fwd * cos(player_angle) - move_side * sin(player_angle);
+    new_y = player_y + move_fwd * sin(player_angle) + move_side * cos(player_angle);
+    if can_walk(map, new_x, player_y, 0.2)
+      player_x = new_x;
+    endif
+    if can_walk(map, player_x, new_y, 0.2)
+      player_y = new_y;
+    endif
+
+    % 2) Demons within wake distance chase the player
+    for k = 1:numel(demon_x)
+      dist_k = hypot(player_x - demon_x(k), player_y - demon_y(k));
+      if dist_k < demon_wake
+        new_dx = demon_x(k) + demon_speed * (player_x - demon_x(k)) / dist_k;
+        new_dy = demon_y(k) + demon_speed * (player_y - demon_y(k)) / dist_k;
+        if can_walk(map, new_dx, demon_y(k), 0.25)
+          demon_x(k) = new_dx;
+        endif
+        if can_walk(map, demon_x(k), new_dy, 0.25)
+          demon_y(k) = new_dy;
+        endif
+      endif
+    endfor
+
+    % 3) Bites: a demon touching the player explodes and costs health
+    bites = hypot(player_x - demon_x, player_y - demon_y) < 0.7;
+    health = health - 10 * sum(bites);
+    demon_x(bites) = [];
+    demon_y(bites) = [];
+
+    % 4) Render the 3D view (muzzle flash brightens the screen)
+    frame = render_frame(map, player_x, player_y, player_angle, demon_x, demon_y, img_w, img_h, fov);
+    if flash_timer > 0
+      frame = min(frame + 0.25, 1);
+      flash_timer = flash_timer - 1;
+    endif
+    set(h_img, 'CData', frame);
+    title(ax, sprintf('Health: %d    Ammo: %d    Kills: %d    Demons left: %d', ...
+                      health, ammo, kills, numel(demon_x)), 'Color', 'r');
+    drawnow;
+    pause(0.01);
+
+    % 5) Check win / lose
+    if hypot(player_x - exit_x, player_y - exit_y) < 1.3
+      outcome = 'win';   game_running = false;
+    elseif health <= 0
+      outcome = 'lose';  game_running = false;
+    endif
+  endwhile
+
+  if ~ishandle(fig), break; endif
+
+  % ---- End of the game: result screen, save, replay or stop ----
+  seconds = toc(game_timer);
+  save_result(results_file, kills, outcome, seconds);
+  switch outcome
+    case 'win',     msg = 'YOU ESCAPED!';
+    case 'lose',    msg = 'YOU DIED';
+    otherwise,      msg = 'GAME STOPPED';
+  endswitch
+  endtext = text(ax, (img_w + 1)/2, (img_h + 1)/2, {msg, ...
+                 sprintf('Kills: %d    Time: %.0f s', kills, seconds), '', ...
+                 'r = replay     q = quit'}, ...
+                 'HorizontalAlignment', 'center', 'Color', 'y', 'FontSize', 16, ...
+                 'BackgroundColor', 'k');
+  key = wait_for_key(fig, {'r', 'q'});
+  if ishandle(endtext), delete(endtext); endif
+  play_again = strcmp(key, 'r');
+endwhile
+
+% ------------------------- END -------------------------------------------
+if ishandle(fig), close(fig); endif
+disp('Thanks for playing! Results saved in doom_fps_results.txt');
