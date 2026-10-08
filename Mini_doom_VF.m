@@ -97,8 +97,8 @@
 % -------------------------------------------------------------------------
 % 9. AUTHORS & CONTRIBUTIONS
 % -------------------------------------------------------------------------
-%   - Camil               : Co-concept designer, gameplay mechanics & combat logic.
-%   - Bela                : Co-concept designer, procedural maze architecture & visuals.
+%   - Camil  Bissessur             : Co-concept designer, gameplay mechanics & combat logic.
+%   - Bela Hersh               : Co-concept designer, procedural maze architecture & visuals.
 %
 % -------------------------------------------------------------------------
 % 10. DATE
