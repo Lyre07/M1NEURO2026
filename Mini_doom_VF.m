@@ -1,7 +1,7 @@
 1;  % marks this file as a script (functions below are defined before use)
 % =========================================================================
 % PROGRAM   : DOOM FPS MINI - Hellish Dimension Campaign
-% FILE      : doom_fps_campaign_v4.m
+% FILE      : doom_fps_campaign_v6.m
 % =========================================================================
 %
 % -------------------------------------------------------------------------
@@ -25,7 +25,7 @@
 %   - Enemy Variety       : Procedurally drawn demon shapes (Blocky, Slender,
 %                           Diamond, V-shape) unique to each realm.
 %   - Hazards & Traps     : Exploding floor spikes scattered across the labyrinth
-%                           deal massive damage if stepped on.
+%                           deal massive damage but can be carefully squeezed past.
 %   - Fleeing & Portals   : Dynamic evasion tactics against chasing predators while
 %                           locating and rushing toward the luminous green portal.
 %   - Radar Minimap       : Top-down tactical overview showing player orientation,
@@ -92,7 +92,7 @@
 % 8. ENVIRONMENT & VERSIONS
 % -------------------------------------------------------------------------
 %   - Octave Version      : GNU Octave 9.x (check yours with: version)
-%   - Code Version        : v4
+%   - Code Version        : v6
 %
 % -------------------------------------------------------------------------
 % 9. AUTHORS & CONTRIBUTIONS
@@ -424,7 +424,7 @@ function img = render_frame(map, px, py, angle, ex, ey, tx, ty, img_w, img_h, fo
       else
         % ---- TRAP RENDERING (Floor Spikes) ----
         trap_h = (img_h * 0.25) / max(dist(k) * cos(rel(k)), 0.1);
-        trap_w = trap_h * 1.5;
+        trap_w = trap_h * 0.8; % Narrowed to reflect the smaller, avoidable hitbox
         top_row = (img_h + 1)/2 + (img_h * 0.35) / max(dist(k) * cos(rel(k)), 0.1) - trap_h; % Anchored to floor
         cols = max(1, round(center_col - trap_w/2)):min(img_w, round(center_col + trap_w/2));
         
@@ -573,10 +573,10 @@ while play_again && ishandle(fig)
   dummy_cfg = all_themes{theme_idx};               
   preview_map = generate_random_maze(15, 15);      
   set(h_img, 'CData', render_frame(preview_map, 1.5, 1.5, 0, [], [], [], [], img_w, img_h, fov, dummy_cfg, 0)); 
-  title(ax, 'DOOM FPS MINI - v4', 'Color', 'y');   
+  title(ax, 'DOOM FPS MINI - v6', 'Color', 'y');   
   title_text = text(ax, (img_w + 1)/2, (img_h + 1)/2, { ...
                 '=====================================', ...
-                '        DOOM FPS MINI (v4)           ', ...
+                '        DOOM FPS MINI (v6)           ', ...
                 '=====================================', ...
                 'Authors : Camil & Bela', ...
                 'Role    : Co-concept Designers', ...
@@ -721,7 +721,7 @@ while play_again && ishandle(fig)
       endif
 
       % Trap explosions
-      trap_hits = hypot(player_x - trap_x, player_y - trap_y) < 0.4;
+      trap_hits = hypot(player_x - trap_x, player_y - trap_y) < 0.2; % Radius reduced to allow wall-hugging evasion
       if any(trap_hits)
         health = health - 15 * sum(trap_hits);     % Massive damage from stepping on trap
         trap_x(trap_hits) = [];                    % Trap is destroyed
