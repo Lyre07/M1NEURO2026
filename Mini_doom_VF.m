@@ -1,110 +1,109 @@
-1;  % marks this file as a script (functions below are defined before use)
+1;  % Marks this file as an executable script so functions below are parsed before main code execution
 % =========================================================================
 % PROGRAM   : DOOM FPS MINI - Hellish Dimension Campaign
-% FILE      : doom_fps_campaign_v6.m
+% FILE      : doom_fps_campaign_VF.m
 % =========================================================================
 %
 % -------------------------------------------------------------------------
 % 1. GOAL
 % -------------------------------------------------------------------------
-%   You have to escape those hellish mazes! Trapped across 4 treacherous,
-%   shifting realms, you must survive against hostile aberrations, scavenge
-%   vital ammunition, and break through the green exit portals to reach
-%   safety and claim the champion trophy.
+%   Escape the hellish mazes! Survive against hostile aberrations, scavenge
+%   ammunition, and break through the green portals to reach safety.
 %
 % -------------------------------------------------------------------------
 % 2. GAME COMPONENTS
 % -------------------------------------------------------------------------
-%   - Walking & Strafe    : Smooth 2D-to-3D projection movement with axis-by-axis
-%                           wall sliding collisions (AZERTY ZQSD controls).
-%   - Raycasting Engine   : Mathematical ray-marching per image column with
-%                           distance-based lighting attenuation.
-%   - Combat & Arsenal    : Ray-traced hitscan targeting with a 2-frame animated
-%                           weapon (idle and muzzle-flash recoil states). 
-%                           Multi-hit demons yield ammunition caches upon defeat.
-%   - Enemy Variety       : Procedurally drawn demon shapes (Blocky, Slender,
-%                           Diamond, V-shape) unique to each realm.
-%   - Hazards & Traps     : Exploding floor spikes scattered across the labyrinth
-%                           deal massive damage but can be carefully squeezed past.
-%   - Fleeing & Portals   : Dynamic evasion tactics against chasing predators while
-%                           locating and rushing toward the luminous green portal.
-%   - Radar Minimap       : Top-down tactical overview showing player orientation,
-%                           labyrinth layout, demons, traps, and portal location.
+%   - 3D Raycasting Engine: Pseudo-3D rendering with lighting attenuation.
+%   - Radar Minimap: Top-down tactical overview of the maze.
+%   - Enemies & Hazards: Procedural demon shapes and exploding floor spikes.
+%   - Combat System: Hitscan shooting with animated 2-frame weapon recoil.
+%   - Audio: Procedural old-school chiptune square-wave bassline.
 %
 % -------------------------------------------------------------------------
 % 3. VARIABLES
 % -------------------------------------------------------------------------
 %   - map                 : Grid matrix (1 = wall, 0 = walkable corridor, 2 = portal).
-%   - player_x, player_y  : 2D coordinates of the space marine in the maze.
+%   - player_x, player_y  : Space marine's 2D coordinates in the maze.
 %   - player_angle        : Camera yaw / view heading angle (in radians).
-%   - demon_x, demon_y    : Coordinate vectors of surviving hellish demons.
-%   - demon_hp            : Remaining health points per demon (requires 3 to 4 shots).
+%   - demon_x, demon_y    : Coordinate vectors of surviving demons.
+%   - demon_hp            : Remaining health points per demon.
 %   - trap_x, trap_y      : Coordinate vectors of hidden floor spikes.
-%   - health, ammo, kills : Marine status tracking vitality, munitions, and eliminations.
+%   - health, ammo, kills : Player status tracking metrics.
 %   - levels_cleared      : Count of conquered hellish realms (target: 4).
-%   - flash_timer         : Frame countdown for muzzle flash lighting & weapon recoil.
+%   - flash_timer         : Frame countdown for muzzle flash and recoil.
 %
 % -------------------------------------------------------------------------
-% 4. MAIN LOOP & EXECUTION FLOW
+% 4. MAIN LOOP
 % -------------------------------------------------------------------------
-%   - Across-Campaign Loop: Randomly chooses starting realm, tracks total kills,
-%                           elapsed campaign time, and transitions stages.
-%   - Stage Generation    : Invokes randomized depth-first search backtracker to carve
-%                           a unique, solvable labyrinth for each stage.
-%   - Per-Frame Inner Loop:
-%       1) Polls keyboard state (movement, strafing, turning, hitscan fire).
-%       2) Advances demon chase vectors toward the marine with wall sliding.
-%       3) Resolves monster contact bites and floor trap explosions.
-%       4) Raycasts visual frame, renders procedural sprites and weapon animations.
-%       5) Checks win condition (touching portal) or defeat (health <= 0).
+%   - Polls keyboard state (movement, strafing, turning, hitscan fire).
+%   - Advances demon chase vectors toward the marine with wall sliding.
+%   - Resolves monster contact bites and floor trap explosions.
+%   - Raycasts visual frame, renders sprites and weapon animations.
+%   - Checks win condition (touching portal) or defeat (health <= 0).
 %
 % -------------------------------------------------------------------------
-% 5. RULES
+% 5. ACROSS TRIALS
+% -------------------------------------------------------------------------
+%   - Randomly selects starting realm theme and dynamically generates a new
+%     procedural maze on each level via Randomized DFS.
+%   - Carries over accumulated kills, grants +25 health bonuses upon
+%     clearing a stage, and requires 4 consecutive wins for the final trophy.
+%   - Replay option fully resets and loops the entire campaign structure.
+%
+% -------------------------------------------------------------------------
+% 6. RULES
 % -------------------------------------------------------------------------
 %   - Start with 100 Health and 18 Ammo.
 %   - Firing costs 1 bullet. Demons require 3-4 hits to kill.
 %   - Slaying an aberration yields +4 to +5 ammunition loot.
-%   - Demon melee contact deals -10 health; Trap explosions deal -15 health.
+%   - Demon melee deals -10 health; Traps deal -15 health.
 %   - Clear 4 distinct hellish realms by stepping onto the green exit portal.
 %   - Reaching 0 health triggers instant campaign failure.
 %
 % -------------------------------------------------------------------------
-% 6. CONTEXT & LORE
+% 7. WAYS TO MOVE
+% -------------------------------------------------------------------------
+%   - Z / S             : Walk forward / backward.
+%   - Q / D             : Strafe left / right.
+%   - Left / Right keys : Turn camera (yaw).
+%   - Spacebar          : Shoot weapon.
+%   - Esc or X          : Stop/Quit the game.
+%
+% -------------------------------------------------------------------------
+% 8. CONTEXT OF THIS GAME
 % -------------------------------------------------------------------------
 %   You are an elite Space Marine dispatched on an exploratory reconnaissance
-%   mission to the uncharted exoplanet Beachasop. During orbital descent, an
-%   anomalous spatial rift tore your vessel apart and cast you into a nightmare
-%   hellish dimension. To return to reality, you must fight your way through
-%   4 shifting labyrinthine domains and breach the planetary gateway.
+%   mission to the uncharted exoplanet Beachasop. An anomalous spatial rift
+%   cast you into a nightmare hellish dimension. You must fight your way
+%   through 4 shifting domains to breach the planetary gateway.
 %
 % -------------------------------------------------------------------------
-% 7. SOURCES (AI / SOUND / IMAGE / WORD LIST)
+% 9. SOURCES (AI / SOUND / IMAGE / WORD LIST)
 % -------------------------------------------------------------------------
-%   - Source of AI        : Initial prototype generated with Claude (Anthropic);
-%                           Campaign structure, procedural DFS maze algorithm,
-%                           and mechanics balancing developed with Gemini (Google).
-%   - Sound               : Procedural Old-School Chiptune Bassline (square waves).
-%   - Images              : All images, HUD, weapon animations, and shapes are
-%                           original, procedurally rendered in real-time.
-%   - Word List           : None.
+%   - Source of AI      : Claude (Anthropic) for initial prototype; Gemini (Google)
+%                         for procedural DFS algorithm, multi-stage, UI, and audio.
+%   - Sound             : Procedural Old-School Chiptune Bassline (square waves).
+%   - Images            : All images, HUD, weapon animations, and shapes are
+%                         original, procedurally rendered mathematically.
+%   - Word List         : None used.
 %
 % -------------------------------------------------------------------------
-% 8. ENVIRONMENT & VERSIONS
+% 10. OCTAVE VERSION & CODE VERSION
 % -------------------------------------------------------------------------
-%   - Octave Version      : GNU Octave 9.x (check yours with: version)
-%   - Code Version        : v6
+%   - Octave Version    : GNU Octave 9.x (check yours with: version)
+%   - Code Version      : VF (Final Version)
 %
 % -------------------------------------------------------------------------
-% 9. AUTHORS & CONTRIBUTIONS
+% 11. AUTHORS & CONTRIBUTION
 % -------------------------------------------------------------------------
-%   - Camil  Bissessur             : Co-concept designer, gameplay mechanics & combat logic.
-%   - Bela Hersh               : Co-concept designer, procedural maze architecture & visuals.
+%   - Camil             : Co-concept designer, gameplay mechanics & combat logic.
+%   - Bela              : Co-concept designer, procedural maze architecture & visuals.
 %
 % -------------------------------------------------------------------------
-% 10. DATE
+% 12. DATE
 % -------------------------------------------------------------------------
-%   - Date                : 08/10/2026
-%                           (dd/mm/yyyy)
+%   - Date              : 08/10/2026
+%                         (dd/mm/yyyy)
 %
 % =========================================================================
 
@@ -138,6 +137,7 @@ function bgm_player = start_music()
 endfunction
 
 function key_press(src, evt)
+  % Callback executed whenever a key is pressed down on the figure window
   held = getappdata(src, 'held');
   if isempty(held), held = {}; endif
   if ~any(strcmp(held, evt.Key))
@@ -148,6 +148,7 @@ function key_press(src, evt)
 endfunction
 
 function key_release(src, evt)
+  % Callback executed whenever a key is released by the player
   held = getappdata(src, 'held');
   if isempty(held), held = {}; endif
   held(strcmp(held, evt.Key)) = [];
@@ -155,6 +156,7 @@ function key_release(src, evt)
 endfunction
 
 function key = wait_for_key(fig, valid_keys)
+  % Pauses execution and waits synchronously until a key in valid_keys is pressed
   key = '';
   setappdata(fig, 'last_key', '');
   while ishandle(fig)
@@ -168,6 +170,7 @@ function key = wait_for_key(fig, valid_keys)
 endfunction
 
 function r = is_held(held, names)
+  % Returns 1.0 if any key specified in 'names' is currently held down, else 0.0
   r = double(any(ismember(held, names)));
 endfunction
 
@@ -548,7 +551,7 @@ results_file   = 'doom_fps_results.txt';
 
 fig = figure('Name', 'DOOM FPS MINI - Hellish Dimension Campaign', 'NumberTitle', 'off', ...
              'Color', [0.08 0.02 0.02], 'KeyPressFcn', @key_press, 'KeyReleaseFcn', @key_release);
-ax = axes('Parent', fig, 'Position', [0.05 0.05 0.90 0.82], ...
+ax = axes('Parent', fig, 'Units', 'normalized', 'Position', [0.05 0.05 0.90 0.82], ...
           'XTick', [], 'YTick', [], 'Box', 'on');   
 h_img = image(ax, zeros(img_h, img_w, 3));         
 axis(ax, 'image');                                 
@@ -573,10 +576,10 @@ while play_again && ishandle(fig)
   dummy_cfg = all_themes{theme_idx};               
   preview_map = generate_random_maze(15, 15);      
   set(h_img, 'CData', render_frame(preview_map, 1.5, 1.5, 0, [], [], [], [], img_w, img_h, fov, dummy_cfg, 0)); 
-  title(ax, 'DOOM FPS MINI - v6', 'Color', 'y');   
+  title(ax, 'DOOM FPS MINI - VF', 'Color', 'y');   
   title_text = text(ax, (img_w + 1)/2, (img_h + 1)/2, { ...
                 '=====================================', ...
-                '        DOOM FPS MINI (v6)           ', ...
+                '        DOOM FPS MINI (VF)           ', ...
                 '=====================================', ...
                 'Authors : Camil & Bela', ...
                 'Role    : Co-concept Designers', ...
