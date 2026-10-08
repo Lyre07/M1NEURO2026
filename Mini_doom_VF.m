@@ -83,7 +83,7 @@
 %   - Source of AI        : Initial prototype generated with Claude (Anthropic);
 %                           Campaign structure, procedural DFS maze algorithm,
 %                           and mechanics balancing developed with Gemini (Google).
-%   - Sound               : None (pure visual rendering).
+%   - Sound               : Procedural Old-School Chiptune Bassline (square waves).
 %   - Images              : All images, HUD, weapon animations, and shapes are
 %                           original, procedurally rendered in real-time.
 %   - Word List           : None.
@@ -109,6 +109,33 @@
 % =========================================================================
 
 % ------------------------- FUNCTIONS -------------------------------------
+
+function bgm_player = start_music()
+  % Procedurally generates and plays a heavy, old-school chiptune bassline (E1M1 style)
+  try
+    Fs = 8000;
+    t = 0 : 1/Fs : (0.115 - 1/Fs); % 16th note duration with a slight staccato cutoff
+    gap = zeros(1, round(Fs * 0.01)); % Brief silence between notes
+
+    fE = 82.41; fE_oct = 164.81; fD = 146.83; fC = 130.81; fBb = 116.54; fB = 123.47;
+    riff = [fE, fE, fE_oct, fE, fE, fD, fE, fE, fC, fE, fE, fBb, fE, fE, fB, fC];
+
+    bar_wave = [];
+    env = exp(-6 * t); % Aggressive envelope decay for plucky bass sound
+    for f = riff
+      note = sign(sin(2 * pi * f * t)) .* env; % Gritty square wave
+      bar_wave = [bar_wave, note, gap];
+    endfor
+
+    full_wave = repmat(bar_wave, 1, 64); % Loop the riff ~64 times (approx 2 minutes)
+    full_wave = 0.1 * full_wave; % Keep volume low so it acts as background music
+
+    bgm_player = audioplayer(full_wave, Fs);
+    play(bgm_player);
+  catch
+    bgm_player = []; % Fallback if audio hardware is unavailable/unsupported
+  end
+endfunction
 
 function key_press(src, evt)
   held = getappdata(src, 'held');
@@ -507,6 +534,7 @@ endfunction
 % ------------------------- SETUP -----------------------------------------
 clear; clc; close all;                             
 
+bgm_player     = start_music();                    % Initialize and start background track
 all_themes     = get_level_themes();               
 img_w          = 120;                              
 img_h          = 72;                               
@@ -712,6 +740,11 @@ while play_again && ishandle(fig)
       drawnow;                                     
       pause(0.01);                                 
 
+      % Keep music looping if it finishes
+      if ~isempty(bgm_player) && ~isplaying(bgm_player)
+        play(bgm_player);
+      endif
+
       % Evaluate stage progression conditions
       if hypot(player_x - exit_x, player_y - exit_y) < 1.3 
         stage_outcome = 'stage_win';               
@@ -793,5 +826,6 @@ while play_again && ishandle(fig)
   play_again = strcmp(key, 'r');                   
 endwhile
 
+if ~isempty(bgm_player) && isplaying(bgm_player), stop(bgm_player); endif
 if ishandle(fig), close(fig); endif                
 disp('Mission concluded. Results recorded in doom_fps_results.txt'); 
