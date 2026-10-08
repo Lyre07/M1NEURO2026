@@ -559,6 +559,9 @@ hold(ax, 'on');
 plot(ax, (img_w + 1)/2, (img_h + 1)/2, '+', 'MarkerSize', 14, 'Color', 'w'); 
 
 % ------------------------- ACROSS CAMPAIGNS LOOP -------------------------
+disp('================================================');
+disp(' PHASE : BEGINNING (Loading Title Screens...)');
+disp('================================================');
 play_again = true;                                 
 while play_again && ishandle(fig)                  
 
@@ -616,6 +619,10 @@ while play_again && ishandle(fig)
     break;                                         
   endif
 
+  disp('================================================');
+  disp(' PHASE : GAME (Entering Labyrinth...)');
+  disp('================================================');
+  
   % ---- Campaign Progression Loop (Levels 1 to 4) ----
   while levels_cleared < required_wins && ishandle(fig) 
     cfg = all_themes{theme_idx};                   
@@ -790,6 +797,9 @@ while play_again && ishandle(fig)
   if ~ishandle(fig), break; endif                  
 
   % ---- Campaign Conclusion / Trophy & Results Screen ----
+  disp('================================================');
+  disp(' PHASE : END OF THE GAME (Results...)');
+  disp('================================================');
   total_seconds = toc(campaign_timer);             
   if campaign_won                                  
     save_result(results_file, kills, 'VICTORY', total_seconds, levels_cleared); 
